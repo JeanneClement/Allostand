@@ -6,9 +6,9 @@
 
 using namespace Rcpp;
 
-// AlloStand
-Rcpp::List AlloStand(arma::mat data, int stand_attempt_max, int tree_attempt_max, double overlap_max, double plot_length, double quadrat_length, double voxel_size, bool force, bool verbose);
-RcppExport SEXP _Allostand_AlloStand(SEXP dataSEXP, SEXP stand_attempt_maxSEXP, SEXP tree_attempt_maxSEXP, SEXP overlap_maxSEXP, SEXP plot_lengthSEXP, SEXP quadrat_lengthSEXP, SEXP voxel_sizeSEXP, SEXP forceSEXP, SEXP verboseSEXP) {
+// position
+Rcpp::List position(arma::mat data, int stand_attempt_max, int tree_attempt_max, double overlap_max, double plot_length, double quadrat_length, double voxel_size, bool force, bool verbose);
+RcppExport SEXP _Allostand_position(SEXP dataSEXP, SEXP stand_attempt_maxSEXP, SEXP tree_attempt_maxSEXP, SEXP overlap_maxSEXP, SEXP plot_lengthSEXP, SEXP quadrat_lengthSEXP, SEXP voxel_sizeSEXP, SEXP forceSEXP, SEXP verboseSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -21,13 +21,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type voxel_size(voxel_sizeSEXP);
     Rcpp::traits::input_parameter< bool >::type force(forceSEXP);
     Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
-    rcpp_result_gen = Rcpp::wrap(AlloStand(data, stand_attempt_max, tree_attempt_max, overlap_max, plot_length, quadrat_length, voxel_size, force, verbose));
+    rcpp_result_gen = Rcpp::wrap(position(data, stand_attempt_max, tree_attempt_max, overlap_max, plot_length, quadrat_length, voxel_size, force, verbose));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_Allostand_AlloStand", (DL_FUNC) &_Allostand_AlloStand, 9},
+    {"_Allostand_position", (DL_FUNC) &_Allostand_position, 9},
     {NULL, NULL, 0}
 };
 

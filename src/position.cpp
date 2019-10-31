@@ -7,7 +7,7 @@
 using namespace arma;
 
 // [[Rcpp::export]]
-Rcpp::List AlloStand(arma::mat data, int stand_attempt_max, int tree_attempt_max, 
+Rcpp::List position(arma::mat data, int stand_attempt_max, int tree_attempt_max, 
                      double overlap_max, double plot_length, double quadrat_length, double voxel_size,
                      bool force, bool verbose) {
   
@@ -222,8 +222,8 @@ data <- randomTreeInventory(ntree=200, nquadrat=5, measurement.rate=1, allom.par
 data <- data[sort(data$dbh,decreasing=T,index.return=T)$ix,]
 
 # Function to locate trees 
-stand <- AlloStand(as.matrix(data), stand_attempt_max=10, tree_attempt_max =350,
-                   overlap_max=0.2, plot_length=100.0, quadrat_length=20.0, voxel_size=0.5, force=T, verbose=T)
+stand <- position(as.matrix(data), stand_attempt_max=10, tree_attempt_max =350,
+                   overlap_max=0.2, plot_length=100.0, quadrat_length=20.0, voxel_size=0.5, force=F, verbose=T)
 stand <- as.data.frame(stand)
 
 ## Representation of results 
