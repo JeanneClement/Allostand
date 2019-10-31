@@ -1,64 +1,15 @@
 #include <RcppArmadillo.h>
 #include <RcppArmadilloExtensions/sample.h>
-#include <gsl/gsl_rng.h>
-#include <gsl/gsl_randist.h>
+#include "useful.h"
 
 // [[Rcpp::depends(RcppArmadillo)]]
-// [[Rcpp::depends(RcppGSL)]]
 
-// Voxelize the crown centered around the point (0, 0, 0), given a voxel size (dvox).
-arma::mat CrownToVoxels(double crown_rx, double crown_ry, double crown_rz, double dvox) {
-  
-  // Crown radius in voxels
-  int rx = std::ceil(crown_rx / dvox);
-  int ry = std::ceil(crown_ry / dvox);
-  int rz = std::ceil(crown_rz / dvox);
-  
-  // Create an eighth of the ellipsoid along (1, 1, 1)
-  arma::mat crown_q111;
-  // Count of rows 
-  int i = 0;
-  for (int ix = 0; ix < rx; ix++) {
-    for (int iy = 0; iy < ry; iy++) {
-      for (int iz = 0; iz < rz; iz++) {
-        if ( ix*ix/(rx*rx) + iy*iy/(ry*ry) + iz*iz/(rz*rz) <= 1) {
-          arma::irowvec voxels_int = {ix, iy, iz};
-          arma::rowvec voxels = arma::conv_to<arma::rowvec>::from(voxels_int);
-          crown_q111.insert_rows(i, voxels);
-          i+=1;
-        }
-      }
-    }
-  }
-  
-  // Project the other 7 eighth along axes 
-  arma::rowvec q000 = {-1,-1,-1};
-  arma::rowvec q001 = {-1,-1,1};
-  arma::rowvec q010 = {-1,1,-1};
-  arma::rowvec q011 = {-1,1,1};
-  arma::rowvec q100 = {1,-1,-1};
-  arma::rowvec q101 = {1,-1,1};
-  arma::rowvec q110 ={1,1,-1};
-  
-  arma::mat crown_q000 = crown_q111.each_row()%q000;
-  arma::mat crown_q001 = crown_q111.each_row()%q001;
-  arma::mat crown_q010 = crown_q111.each_row()%q010;
-  arma::mat crown_q011 = crown_q111.each_row()%q011; 
-  arma::mat crown_q100 = crown_q111.each_row()%q100;
-  arma::mat crown_q101 = crown_q111.each_row()%q101;
-  arma::mat crown_q110 = crown_q111.each_row()%q110;
-  
-  arma::mat crown_mat = arma::join_cols(crown_q111,arma::join_cols(crown_q000, crown_q001));
-  crown_mat = arma::join_cols(crown_mat, arma::join_cols(crown_q010, crown_q011));
-  crown_mat = arma::join_cols(crown_mat, arma::join_cols(crown_q100, crown_q101));
-  crown_mat = arma::join_cols(crown_mat, crown_q110);
-  
-  return crown_mat;
-}
+using namespace arma;
 
 // [[Rcpp::export]]
 Rcpp::List AlloStand(arma::mat data, int stand_attempt_max, int tree_attempt_max, 
-                     double overlap_max, double plot_length, double quadrat_length, double voxel_size) {
+                     double overlap_max, double plot_length, double quadrat_length, double voxel_size,
+                     bool force, bool verbose) {
   
   int tree_index_max = data.n_rows;
   Rcpp::List stand;
@@ -72,10 +23,14 @@ Rcpp::List AlloStand(arma::mat data, int stand_attempt_max, int tree_attempt_max
   arma::vec stand_crown_radius(tree_index_max); stand_crown_radius = data.col(5); // Crown radius
   arma::vec stand_x(tree_index_max); // X coordinate of the tree in the plot
   arma::vec stand_y(tree_index_max); // Y coordinate of the tree in the plot
+  arma::vec overlap_vec(tree_index_max); // overlap rate for each tree's crown 
   
   // index of quadrat (0,0),(0,1) to coordinates in meter of the bottom left corner
   quadrat_x = quadrat_x * quadrat_length;
   quadrat_y = quadrat_y * quadrat_length;
+  
+  // Define overlap as a vector
+  arma::vec overlap_max_vec(tree_attempt_max); overlap_max_vec.fill(overlap_max);
   
   // Find highest tree (that will determine mockup vertical dimension)
   // Extract maximal tree height, metre
@@ -86,23 +41,30 @@ Rcpp::List AlloStand(arma::mat data, int stand_attempt_max, int tree_attempt_max
   arma::rowvec plot_dim_voxel = arma::ceil(plot_dim / voxel_size);
   
   // Loop while the stand is not successfully populated, up to the maximal stand attempt
-  for (int stand_attempt_index=1; stand_attempt_index <= stand_attempt_max; stand_attempt_index++) {
+  for (int stand_attempt_index=1; stand_attempt_index <= stand_attempt_max+1; stand_attempt_index++) {
     
-    Rprintf("  Attempt %i starting... \n", stand_attempt_index);
+    if(verbose){
+      Rprintf("  Attempt %i starting... \n", stand_attempt_index);
+    }
     
     // Initialises the mockup with zeros
     arma::Cube<double> mockup; mockup.zeros(plot_dim_voxel(0)+1,plot_dim_voxel(1)+1,plot_dim_voxel(2)+1);
     
     // Loop over the trees
+    int n_fail = 0;
     for (int tree_index=0; tree_index < tree_index_max; tree_index++) {
-      Rprintf("Tree %i / %i \n",tree_index+1, tree_index_max);
+      if(verbose){
+        Rprintf("Tree %i / %i \n",tree_index+1, tree_index_max);
+      }
       
       // Tree not located by default
       bool located = false;
       
       // Loop while tree is not located, up to the maximal tree attempt
       for (int tree_attempt_index=1;  tree_attempt_index <= tree_attempt_max; tree_attempt_index++) { 
-      Rprintf(".");
+        if(verbose){
+          Rprintf(".");
+        }
         
         // Choose a random x y coordinate within the quadrat, in metre
         double tree_x = arma::as_scalar(Rcpp::RcppArmadillo::sample(arma::regspace(std::max(quadrat_x(tree_index), voxel_size),voxel_size, std::min(quadrat_x(tree_index)+quadrat_length, plot_length-voxel_size)),1, false));
@@ -111,7 +73,7 @@ Rcpp::List AlloStand(arma::mat data, int stand_attempt_max, int tree_attempt_max
         
         // Create voxelised crown
         arma::mat crown = CrownToVoxels(stand_crown_radius(tree_index), stand_crown_radius(tree_index), 0.5*(stand_height(tree_index)-stand_trunk_height(tree_index)), voxel_size);
-
+        
         // Position the tree in the mockup
         arma::rowvec tree_centre = {tree_x, tree_y, 0.5*(stand_height(tree_index) + stand_trunk_height(tree_index))};
         arma::rowvec tree_centre_voxel = arma::ceil(tree_centre / voxel_size) + 1;
@@ -139,47 +101,93 @@ Rcpp::List AlloStand(arma::mat data, int stand_attempt_max, int tree_attempt_max
           }
           sum_occuped_vox += mockup(tree_voxel(i,0),tree_voxel(i,1),tree_voxel(i,2));
         }
+        
         // Computes overlap rate of current tree in the mockup
         double overlap = sum_occuped_vox/nvox_tree;
-        if (overlap <= overlap_max) {
+        
+        if (overlap <= overlap_max_vec(tree_attempt_index-1)) {
           // Overlap is acceptable, the tree position is validated
           for (int i=0; i< nvox_tree; i++) {
             mockup(tree_voxel(i,0),tree_voxel(i,1),tree_voxel(i,2)) = 1.0;
           }
           stand_x(tree_index) = tree_x;
           stand_y(tree_index) = tree_y;
+          overlap_vec(tree_index) = overlap; 
           
           located = true;
-          Rprintf("[DONE] \n");
+          if(verbose){
+            Rprintf("[DONE] \n");
+          }
           
           // Exit the tree attempt loop
           break;
         }
-      continue;
+        continue;
+        
       } // end of loop for (tree_attempt_index in 1:tree_attempt_max)
       
       // Tree could not be positioned in the current stand attempt
       if (!located) {
-        Rprintf("[FAILED] too many unsuccessful positions \n");
+        if(verbose){
+          Rprintf("\n [FAILED] too many unsuccessful positions \n");
+        }
+        
         // Exit the tree loop and start a new stand attempt
-        if( stand_attempt_index==stand_attempt_max)
-          Rprintf(" Simulation [FAILED] %i unsuccessful attempt to locate trees \n", stand_attempt_max);
-        break; 
-        }      
-      if (located & tree_index == tree_index_max-1) {
-        stand_attempt_index=stand_attempt_max;      }
+        if(stand_attempt_index < stand_attempt_max){
+          break;
+        }
+        
+        // If the last stand attempt failed try one more time 
+        if( stand_attempt_index==stand_attempt_max){
+          if(verbose){
+            Rprintf("Simulation [FAILED] %i unsuccessful attempt to locate all trees \n", stand_attempt_max);
+          }
+          
+          // On supplementary attempt maximal overlap for some trees is adapted to locate them if force=true 
+          if(force){
+            overlap_max_vec = arma::regspace(overlap_max,(1-overlap_max)/(tree_attempt_max-1),1);
+          }
+          break;
+        }
+        
+        // On supplementary attempt some trees may not be located if force=false
+        if( stand_attempt_index == stand_attempt_max+1 & !force ){
+          stand_x(tree_index) = NA_REAL;
+          stand_y(tree_index) = NA_REAL;
+          n_fail += 1;
+          continue;
+        }
+        
+      }
+      
+      // If all trees are located before last attempt return results
+      if (located & tree_index == tree_index_max-1 & stand_attempt_index <= stand_attempt_max) {
+        stand_attempt_index=stand_attempt_max+2;      
+      }
+      
     } // end of loop for(tree_index in 0:(tree_index_max-1))
     // Move to the following tree
-
+    
+    if(verbose & n_fail!=0){
+      Rprintf(" Return results with %i / %i trees not located \n", n_fail, tree_index_max);
+    }
+    
+    if(verbose & force & (stand_attempt_index==stand_attempt_max+1)){
+      Rprintf("Last attempt by adapting maximal overlap to locate all trees \n", stand_attempt_max);
+    }    
   } // end of loop for (stand_attempt_index in 1:stand_attempt_max)
-  Rprintf("Stand - Simulation terminated \n");
+  
+  if(verbose){
+    Rprintf("Stand - Simulation terminated \n");
+  }
   
   stand = Rcpp::List::create(Rcpp::Named("quadrat.x") = quadrat_x, // Quadra x-coordinate
                              Rcpp::Named("quadrat.y")= quadrat_y, // Quadra y-coordinate
-                             Rcpp::Named("dbh") = stand_dbh, // Diamtre at breast height
+                             Rcpp::Named("dbh") = stand_dbh, // Diametre at breast height
                              Rcpp::Named("height") = stand_height, // height
                              Rcpp::Named("trunk.height") = stand_trunk_height, // Trunk height
                              Rcpp::Named("crown.radius") = stand_crown_radius, // Crown radius
+                             Rcpp::Named("overlap") = overlap_vec, // overlap of each tree's crown
                              Rcpp::Named("x")= stand_x , Rcpp::Named("y") = stand_y);// X and Y coordinate of the tree in the plot
   
   // Rcpp::List converted in R list
@@ -209,17 +217,17 @@ allom.param <- data.frame(H_a, H_b, H_c, Cr_x2, Cr_y2, Cr_inter1, Cr_coef1, Cr_c
 
 source('/home/beauclair/Documents/Allostand/R/randomTreeInventory.R')
 # Data simulation 
-data <- randomTreeInventory(ntree=600, nquadrat=5, measurement.rate=1, allom.param = allom.param)
+data <- randomTreeInventory(ntree=200, nquadrat=5, measurement.rate=1, allom.param = allom.param)
 # Sort dbh to position the highest trees first 
 data <- data[sort(data$dbh,decreasing=T,index.return=T)$ix,]
 
 # Function to locate trees 
 stand <- AlloStand(as.matrix(data), stand_attempt_max=10, tree_attempt_max =350,
-                   overlap_max=0.2, plot_length=200.0, quadrat_length=40.0, voxel_size=0.5)
+                   overlap_max=0.2, plot_length=100.0, quadrat_length=20.0, voxel_size=0.5, force=T, verbose=T)
 stand <- as.data.frame(stand)
 
 ## Representation of results 
 source('/home/beauclair/Documents/Allostand/R/tree3d.R')
-plot.stand(stand = stand, res=20)
+plot.stand(stand = stand[!is.na(stand$x),], res=20)
 **/
   
