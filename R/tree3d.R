@@ -58,3 +58,18 @@ draw.tree <- function(x=0, y=0, dbh=50, tree.height=33, crown.width=10, crown.ba
   crown.centre <- crown.base.height + 0.4 * crown.height
   shade3d(translate3d(rotate3d(scale3d(ellipsoid3d(n=res), 0.5*crown.width, 0.5*crown.width, 0.5*crown.height), angle=pi, x=0, y=1, z=0), x=x, y=y, z=crown.centre), col=col)
 }
+
+plot.stand <- function(stand, res=48) {
+  # Draw 3D stand with RGL library. Must source tree3d.R script beforehand.
+  # For an animation type play3d(spin3d(axis = c(0, 0, 1), rpm = 1)) after calling this function
+  
+  library(rgl)
+  open3d()
+  greens <- colours()[grep("green", colours())]
+  icol <- round(runif(nrow(stand), 1, length(greens)))
+  greens <- greens[icol]
+  for (i in seq(nrow(stand))) {
+    tree <- stand[i,]
+    draw.tree(x=tree$x, y=tree$y, dbh=tree$dbh, tree.height=tree$height, crown.width = 2*tree$crown.radius, crown.base.height = tree$trunk.height, col=greens[i], res=res)
+  }  
+}
